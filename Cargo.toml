@@ -7,7 +7,6 @@ repository = "https://github.com/Vidi0/primeutils"
 readme = "README.md"
 description = "A collection of tools for working with prime numbers."
 license = "GPL-3.0-or-later"
-license-file = "LICENSE"
 
 [dependencies]
 num_cpus = { version = "1.16.0" , optional = true }
