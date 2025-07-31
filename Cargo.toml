@@ -5,6 +5,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 license-file = "LICENSE"
 repository = "https://github.com/Vidi0/primeutils"
+authors = ["Vidi <125580894+Vidi0@users.noreply.github.com>"]
 
 [dependencies]
 num_cpus = { version = "1.16.0" , optional = true }
