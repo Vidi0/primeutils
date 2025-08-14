@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 mod bits;
@@ -199,7 +199,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
   
   let small_primes: Arc<Vec<u32>> = Arc::new(simple_sieve(sqrt));
   let count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(small_primes.len()));
-  let iter: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(Some(0)));
+  let iter: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
   if start > 2 {
     count.fetch_sub(
@@ -209,7 +209,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
       else {
         small_primes.iter().filter(|&&x| (x as usize) < start).count()
       },
-    Ordering::SeqCst);
+    Ordering::Relaxed);
   }
 
   let mut handles = vec![];
@@ -218,7 +218,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
 
     let mut sieve: Vec<u8> = vec![0xff; segment_sieve_size];
     let count: Arc<AtomicUsize> = Arc::clone(&count);
-    let iter: Arc<Mutex<Option<u32>>> = Arc::clone(&iter);
+    let iter: Arc<AtomicUsize> = Arc::clone(&iter);
     let small_primes: Arc<Vec<u32>> = Arc::clone(&small_primes);
 
     let handle = thread::spawn(move || {
@@ -227,27 +227,17 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
       let mut high: usize;
 
       loop {
-        {
-          let mut iter = iter.lock().unwrap();
-          if let Option::None = *iter {
-            break;
-          }
+        let i: usize = iter.fetch_add(1, Ordering::AcqRel);
 
-          low = start + (iter.unwrap() as usize * segment_size);
-          high = std::cmp::min(low + segment_size - 1, limit);
-          if high >= limit {
-            *iter = None;
-          }
-          else {
-            *iter = Some(iter.unwrap() + 1);
-          }
+        low = start + (i * segment_size);
+        if low > limit {
+          break;
         }
+        high = std::cmp::min(low + segment_size - 1, limit);
 
         let current_count = segment_sieve(&mut sieve, &small_primes, low, high) as usize;
 
-        {
-          count.fetch_add(current_count, Ordering::SeqCst);
-        }
+        count.fetch_add(current_count, Ordering::Relaxed);
       }
     });
 
