@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -197,17 +198,18 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
   let segment_sieve_size: usize = segment_size.div_ceil(16);
   
   let small_primes: Arc<Vec<u32>> = Arc::new(simple_sieve(sqrt));
-  let count: Arc<Mutex<usize>> = Arc::new(Mutex::new(small_primes.len()));
+  let count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(small_primes.len()));
   let iter: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(Some(0)));
 
   if start > 2 {
-    let mut num = count.lock().unwrap();
-    *num -= if start > sqrt as usize {
-      small_primes.len()
-    }
-    else {
-      small_primes.iter().filter(|&&x| (x as usize) < start).count()
-    };
+    count.fetch_sub(
+      if start > sqrt as usize {
+        small_primes.len()
+      }
+      else {
+        small_primes.iter().filter(|&&x| (x as usize) < start).count()
+      },
+    Ordering::SeqCst);
   }
 
   let mut handles = vec![];
@@ -215,7 +217,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
   for _ in 0..threads {
 
     let mut sieve: Vec<u8> = vec![0xff; segment_sieve_size];
-    let count: Arc<Mutex<usize>> = Arc::clone(&count);
+    let count: Arc<AtomicUsize> = Arc::clone(&count);
     let iter: Arc<Mutex<Option<u32>>> = Arc::clone(&iter);
     let small_primes: Arc<Vec<u32>> = Arc::clone(&small_primes);
 
@@ -244,8 +246,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
         let current_count = segment_sieve(&mut sieve, &small_primes, low, high) as usize;
 
         {
-          let mut num = count.lock().unwrap();
-          *num += current_count;
+          count.fetch_add(current_count, Ordering::SeqCst);
         }
       }
     });
@@ -257,8 +258,7 @@ pub fn count_primes(limit: usize, start: Option<usize>, threads: Option<usize>, 
     handle.join().unwrap();
   }
 
-  let num = count.lock().unwrap();
-  num.clone()
+  count.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]
